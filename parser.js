@@ -23,10 +23,10 @@ function isOp(ch){
 	return ops.indexOf(ch) != -1;
 }
 
-function createToken(type, value){
+function createToken(value, dValue){
 	return {
-		type: type,
-		value: value
+		value: wrap(value),
+		derivative: dValue
 	}
 }
 
@@ -35,6 +35,8 @@ function tokenize(math){
 }
 
 var precedence = {
+		"(": -1,
+		")": -1,
 		"^": 2,
 		"*": 1,
 		"/": 1,
@@ -51,38 +53,37 @@ function convertToPostfix(math){
 		var curr = math[i];
 		if(isOpenParen(curr)){
 			opStack.push(curr);
-		} 
-		else if(isCloseParen(curr)){
+		} else if(isCloseParen(curr)){
 			var op;
 			while(!isOpenParen(op = opStack.pop())){
 				toReturn.push(op);
 				if(opStack.length === 0) throw "Mismatched parentheses";
 			}
-		}
-		else if(isOp(curr)){
-			if(opStack.length === 0 || isOpenParen(opStack[opStack.length - 1])){
-				opStack.push(curr);
-			} 
-			else {
-				var topOp = opStack[opStack.length - 1];
-				while(precedence[topOp] === undefined || precedence[topOp] > precedence[curr]){
-					toReturn.push(opStack.pop());
-					topOp = opStack[opStack.length - 1];
-					if(opStack.length === 0) break;
-				}
-				if(opStack.length === 0 || precedence[topOp] < precedence[curr]){
-					opStack.push(curr)
-				}
-				else{
-					toReturn.push(opStack.pop());
+		} else if(isOp(curr)){
+			if(curr === "-" && 
+					(i === 0 || isOp(math[i-1]) || isOpenParen(math[i-1]) || (isLetter(math[i-1]) && !isVar(math[i-1])))){
+				opStack.push("U-"); //unary negative
+			} else {
+				if(opStack.length === 0 || isOpenParen(opStack[opStack.length - 1])){
 					opStack.push(curr);
-				} 
+				} else {
+					var topOp = opStack[opStack.length - 1];
+					while(precedence[topOp] === undefined || precedence[topOp] > precedence[curr]){
+						toReturn.push(opStack.pop());
+						topOp = opStack[opStack.length - 1];
+						if(opStack.length === 0) break;
+					}
+					if(opStack.length === 0 || precedence[topOp] < precedence[curr]){
+						opStack.push(curr)
+					} else{
+						toReturn.push(opStack.pop());
+						opStack.push(curr);
+					} 
+				}
 			}
-		}
-		else if(isVar(curr)){
+		} else if(isVar(curr)){
 			toReturn.push(curr);
-		}
-		else if(isNumber(curr)){
+		} else if(isNumber(curr)){
 			var string = curr;
 			i++;
 			while(isNumber(math[i]) || math[i] == "."){
@@ -100,15 +101,12 @@ function convertToPostfix(math){
 			}
 			toReturn.push(parseFloat(string));
 			i--;
-		}
-		else if(isLetter(curr)){ //function
+		} else if(isLetter(curr)){ //function
 			var string = curr;
-			i++;
-			while(isLetter(math[i])){
-				string += math[i];
+			while(isLetter(math[i+1])){
+				string += math[i+1];
 				i++;
 			}
-			i--;
 			
 			var argIsVar;
 			if(isVar(string[string.length - 1])){
@@ -118,8 +116,7 @@ function convertToPostfix(math){
 			
 			opStack.push(string); //always push since functions are highest precedence
 			if(argIsVar !== undefined) toReturn.push(argIsVar);
-		}
-		else {
+		} else {
 			throw "Illegal character."
 		}
 		i++;
@@ -132,4 +129,95 @@ function convertToPostfix(math){
 	}
 	
 	return toReturn;
+}
+
+function evaluatePostfix(pf){
+	pf.reverse();
+	var resultStack = [];
+	
+	while(pf.length > 0){
+		var curr = pf.pop();
+		if(typeof(curr) === "number"){
+			resultStack.push(createToken(curr, 0)); //derivative of constant is 0
+		} else if(isVar(curr)){
+			resultStack.push(createToken(curr, 1)); //derivative of x is 1
+		} else if(isOp(curr)){
+			var last = resultStack.pop();
+			var first = resultStack.pop();
+			var value = first.value + curr + last.value;
+			var deriv;
+			switch(curr){
+				case "^": 
+					deriv = applyPowerRule(first, last);
+					break;
+				case "*":
+					deriv = applyProductRule(first, last);
+					break;
+				case "/":
+					deriv = applyQuotientRule(first, last);
+					break;
+				case "+":
+				case "-":
+					deriv = first.derivative + curr + last.derivative;
+					break;
+			};
+			resultStack.push(createToken(value, deriv));
+		} else { //function
+			var argument = resultStack.pop();
+			
+			deriv = applyChainRule(curr, argument);
+			if(curr === "U-") curr = "-";
+			value = curr + wrap(argument.value);
+			resultStack.push(createToken(value, deriv));
+		}
+	}
+	
+	if(resultStack.length !== 1) throw "Malformed expression.";
+	
+	return resultStack[0].derivative;
+}
+
+function applyPowerRule(base, exp){
+	//f(x)^g(x) -> f(x)^(g(x)-1)(f'(x)g(x) + f(x)ln(f(x))g'(x))
+	return wrap(base.value) + "^" + wrap(exp.value + "-1") + "(" + wrap(exp.value) + "*" + wrap(base.derivative) + "+" + wrap(base.value)
+			+ "*ln" + wrap(base.value) + "*" + wrap(exp.derivative) + ")";
+}
+
+function applyProductRule(f, g){
+	//f(x)*g(x) -> f'(x)g(x) + f(x)g'(x)
+	return wrap(f.derivative) + "*" + wrap(g.value) + "+" + wrap(f.value) + "*" + wrap(g.derivative);
+}
+
+function applyChainRule(func, g){
+	//f(g(x)) -> f'(g(x))*g'(x)
+	derivatives = {
+		sqrt: "1/(2*sqrt(x))",
+		ln:  "1/x",
+		log: "1/(x*ln(10))",
+		sin: "cos(x)",
+		cos: "-sin(x)",
+		tan: "sec(x)^2",
+		sec: "sec(x)*tan(x)",
+		csc: "-csc(x)*cot(x)",
+		cot: "-csc(x)^2",
+		arcsin: "1/sqrt(1-x^2)",
+		arccos: "-1/sqrt(1-x^2)",
+		arctan: "1/(1+x^2)",
+		arccot: "-1/(1+x^2)",
+		arcsec: "1/(x*sqrt(x^2-1))",
+		arccsc: "-1/(x*sqrt(x^2-1))",
+		"U-": "-1" //unary negative
+	}
+	var term1 = derivatives[func].replace("x", wrap(g.value));
+	return term1 + "*" + wrap(g.derivative);	
+}
+
+function applyQuotientRule(f, g){
+	//f(x)/g(x) -> (f'(x)g(x) - f(x)g'(x))/(g(x)^2)
+	return wrap(wrap(f.derivative) + "*" + wrap(g.value) + "-" + wrap(f.value) + "*" + wrap(g.derivative)) + "/" + wrap(wrap(g.value) + "^2")
+}
+
+function wrap(x){
+	if(typeof(x) === "number" || x.length <= 1) return x;
+	return "(" + x + ")";
 }
