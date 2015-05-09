@@ -30,8 +30,12 @@ function createToken(value, dValue){
 	}
 }
 
-function tokenize(math){
-	math.replace(/\s/g, "");
+function createNode(type, value, children){
+	return {
+		type: type,
+		value: value,
+		children: children
+	}
 }
 
 var precedence = {
@@ -132,11 +136,10 @@ function convertToPostfix(math){
 }
 
 function evaluatePostfix(pf){
-	pf.reverse();
 	var resultStack = [];
 	
 	while(pf.length > 0){
-		var curr = pf.pop();
+		var curr = pf.shift();
 		if(typeof(curr) === "number"){
 			resultStack.push(createToken(curr, 0)); //derivative of constant is 0
 		} else if(isVar(curr)){
@@ -215,6 +218,44 @@ function applyChainRule(func, g){
 function applyQuotientRule(f, g){
 	//f(x)/g(x) -> (f'(x)g(x) - f(x)g'(x))/(g(x)^2)
 	return wrap(wrap(f.derivative) + "*" + wrap(g.value) + "-" + wrap(f.value) + "*" + wrap(g.derivative)) + "/" + wrap(wrap(g.value) + "^2")
+}
+
+function treeFromPostfix(pf){
+	var resultStack = [];
+	
+	while(pf.length > 0){
+		var curr = pf.shift();
+		if(typeof(curr) === "number"){
+			resultStack.push(createNode("LITERAL", curr, []));
+		} else if(isVar(curr)){
+			resultStack.push(createNode("VARIABLE", curr, []));
+		} else if(isOp(curr)){
+			var last = resultStack.pop();
+			var first = resultStack.pop();
+			var children = [first, last];
+			resultStack.push(createNode("OP", curr, children));
+		} else { //function
+			var argument = resultStack.pop();
+			resultStack.push(createNode("FUNC", curr, [argument]));
+		}
+	}
+	
+	if(resultStack.length !== 1) throw "Malformed expression.";
+	
+	return resultStack[0];
+}
+
+function simplifyTree(tree){
+	var resultStack = [];
+	function analyzeNode(node){
+		var allIsLiteral = true;
+		for(var i = 0; i < node.children.length; i++){
+			var child = node.children[i];
+			if(child.type !== "LITERAL") allIsLiteral = false;
+			
+			
+		}
+	}
 }
 
 function wrap(x){
