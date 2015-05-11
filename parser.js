@@ -117,14 +117,14 @@ function convertToPostfix(math){
 				i++;
 			}
 			
-			var argIsVar;
+			var argIsVar = null;
 			if(isVar(string[string.length - 1])){
 				argIsVar = string[string.length - 1];
 				string = string.slice(0, -1)
 			}
 			
 			opStack.push(string); //always push since functions are highest precedence
-			if(argIsVar !== undefined) toReturn.push(argIsVar);
+			if(argIsVar !== null) toReturn.push(argIsVar);
 		} else {
 			throw "Illegal character."
 		}
@@ -241,6 +241,7 @@ function treeFromPostfix(pf){
 			resultStack.push(createNode("OP", curr, children));
 		} else { //function
 			var argument = resultStack.pop();
+			if(curr == "U-") curr = "-";
 			resultStack.push(createNode("FUNC", curr, [argument]));
 		}
 	}
