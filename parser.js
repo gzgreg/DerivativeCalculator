@@ -38,6 +38,11 @@ function createNode(type, value, children){
 	}
 }
 
+function createRule(condition, action){
+	var body = "if(" + condition + "){" + action + "return true;} else return false;";
+	return new Function("current", "parent", "children", body);
+}
+
 var precedence = {
 		"(": -1,
 		")": -1,
@@ -182,7 +187,7 @@ function evaluatePostfix(pf){
 
 function applyPowerRule(base, exp){
 	//f(x)^g(x) -> f(x)^(g(x)-1)(f'(x)g(x) + f(x)ln(f(x))g'(x))
-	return wrap(base.value) + "^" + wrap(exp.value + "-1") + "(" + wrap(exp.value) + "*" + wrap(base.derivative) + "+" + wrap(base.value)
+	return wrap(base.value) + "^" + wrap(exp.value + "-1") + "*(" + wrap(exp.value) + "*" + wrap(base.derivative) + "+" + wrap(base.value)
 			+ "*ln" + wrap(base.value) + "*" + wrap(exp.derivative) + ")";
 }
 
@@ -246,16 +251,44 @@ function treeFromPostfix(pf){
 }
 
 function simplifyTree(tree){
-	var resultStack = [];
+	var parentStack = [];
+	simplifyTree.rules = [createRule("children.every(function(child){return child.type==='LITERAL';}) && current.type === 'OP'",
+									"var value = children.reduce(function(prev, curr){switch(current.value){" + 
+									"case '+': return prev.value + curr.value;" +
+									"case '-': return prev.value - curr.value;" +
+									"case '*': return prev.value * curr.value;" +
+									"case '/': return prev.value / curr.value;" +
+									"case '^': return Math.pow(prev.value, curr.value);" +
+									"}}); current.type = 'LITERAL'; current.value = value; current.children = [];"), //literal exp
+							createRule("children.some(function(child){return child.type==='LITERAL' && child.value === 0;}) &&" +
+									"current.value === '*' && current.type === 'OP'", //multiply by 0
+									"current.type = 'LITERAL'; current.value = 0; current.children = [];"),
+							createRule("children.some(function(child){return child.type==='LITERAL' && child.value === 0;}) &&" +
+									"current.value === '+' && current.type === 'OP'", //add 0
+									"children = children.filter(function(child){return child.value !== 0;});" +
+									"if(children.length == 1){current.value = children[0].value;" +
+									"current.type = children[0].type;" +
+									"current.children = children[0].children;}")];  
 	function analyzeNode(node){
-		var allIsLiteral = true;
+		if(node.children.length == 0) return;
+		parentStack.push(node);
 		for(var i = 0; i < node.children.length; i++){
-			var child = node.children[i];
-			if(child.type !== "LITERAL") allIsLiteral = false;
-			
-			
+			analyzeNode(node.children[i]);
+		}
+		parentStack.pop();
+		
+		for(var i = 0; i < simplifyTree.rules.length; i++){
+			var rule = simplifyTree.rules[i];
+			rule(node, parentStack[parentStack.length - 1], node.children);
 		}
 	}
+	
+	analyzeNode(tree);
+	return tree;
+}
+
+function calculateDerivative(math){
+	return simplifyTree(treeFromPostfix(convertToPostfix(evaluatePostfix(convertToPostfix(math)))));
 }
 
 function wrap(x){
