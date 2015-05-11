@@ -287,8 +287,21 @@ function simplifyTree(tree){
 	return tree;
 }
 
+function infixFromTree(tree){
+	function parseNode(node){
+		switch(node.type){
+			case "LITERAL":
+			case "VARIABLE": return node.value;
+			case "OP": return wrap(parseNode(node.children[0])) + node.value + wrap(parseNode(node.children[1]));
+			case "FUNC": return node.value + wrap(parseNode(node.children[0]));
+		}
+	}
+	
+	return parseNode(tree);
+}
+
 function calculateDerivative(math){
-	return simplifyTree(treeFromPostfix(convertToPostfix(evaluatePostfix(convertToPostfix(math)))));
+	return infixFromTree(simplifyTree(treeFromPostfix(convertToPostfix(evaluatePostfix(convertToPostfix(math))))));
 }
 
 function wrap(x){
