@@ -268,6 +268,12 @@ function simplifyTree(tree){
 									"children = children.filter(function(child){return child.value !== 0;});" +
 									"if(children.length == 1){current.value = children[0].value;" +
 									"current.type = children[0].type;" +
+									"current.children = children[0].children;}"),
+							createRule("children.some(function(child){return child.type==='LITERAL' && child.value === 1;}) &&" +
+									"current.value === '*' && current.type === 'OP'", //multiply by 1
+									"children = children.filter(function(child){return child.value !== 1;});" +
+									"if(children.length == 1){current.value = children[0].value;" +
+									"current.type = children[0].type;" +
 									"current.children = children[0].children;}")];  
 	function analyzeNode(node){
 		if(node.children.length == 0) return;
