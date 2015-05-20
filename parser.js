@@ -187,6 +187,14 @@ function evaluatePostfix(pf){
 
 function applyPowerRule(base, exp){
 	//f(x)^g(x) -> f(x)^(g(x)-1)(f'(x)g(x) + f(x)ln(f(x))g'(x))
+	if(typeof(base.value) === "number"){
+		if(typeof(exp.value) === "number") return 0;
+		
+		if(isVar(exp.value)) return "ln" + wrap(base.value) + "*" + base.value + "^" + exp.value;
+	} else if(isVar(base.value)){
+		if(typeof(exp.value) === "number") return exp.value + "*" + base.value + "^" + (exp.value - 1);
+	}
+	
 	return wrap(base.value) + "^" + wrap(exp.value + "-1") + "*(" + wrap(exp.value) + "*" + wrap(base.derivative) + "+" + wrap(base.value)
 			+ "*ln" + wrap(base.value) + "*" + wrap(exp.derivative) + ")";
 }
